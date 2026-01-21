@@ -2,26 +2,44 @@
 # It is only used when the flag `-p dotbot-simulator` is set, otherwise it is ignored.
 
 [[dotbots]]
-address = "BADCAFE111111111" # DotBot unique address
+address = "AAAAAAAA11111111" # DotBot unique address
 calibrated = true # optional, defaults to true
-pos_x = 200_000 # [0, 1_000_000]
-pos_y = 200_000 # [0, 1_000_000]
+pos_x = 400_000 # [0, 1_000_000]
+pos_y = 400_000 # [0, 1_000_000]
 theta = 0.0 # [0.0, 2pi]
 
 [[dotbots]]
-address = "DEADBEEF22222222"
-pos_x = 200_000
-pos_y = 100_000
+address = "AAAAAAAA22222222"
+pos_x = 600_000
+pos_y = 400_000
 theta = 1.57
 
-[[dotbots]]
-address = "B0B0F00D33333333"
-pos_x = 1_000_000
-pos_y = 1_000_000
-theta = 1.57
+# [[dotbots]]
+# address = "AAAAAAAA33333333"
+# pos_x = 600_000
+# pos_y = 600_000
+# theta = 3.14
+
+# [[dotbots]]
+# address = "AAAAAAAA44444444"
+# pos_x = 400_000
+# pos_y = 600_000
+# theta = 4.71
 
 [[dotbots]]
-address = "BADC0DE444444444"
+address = "FFFFFFFF00000000"
 pos_x = 500_000
 pos_y = 500_000
-theta = 3.14
+theta = 0.0
+
+[[dotbots]]
+address = "FFFFFFFF00000001"
+pos_x = 450_000
+pos_y = 400_000
+theta = 0.0
+
+[[dotbots]]
+address = "FFFFFFFF00000002"
+pos_x = 550_000
+pos_y = 400_000
+theta = 1.57

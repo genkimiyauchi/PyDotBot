@@ -44,7 +44,7 @@ QUEUE_SPACING = (
     0.1  # Spacing between consecutive bots in the charging queue (along X axis)
 )
 
-SENSING_RANGE = 0.3  # Range within which neighbors can be sensed
+SENSING_RANGE = 0.6  # Range within which neighbors can be sensed
 
 @dataclass
 class NeighborSensing:
@@ -60,8 +60,8 @@ dotbot_neighbors: Dict[str, Dict[str, NeighborSensing]] = {}
 TARGETS = {
     1: Vec2(x=0.1, y=0.1),
     2: Vec2(x=0.9, y=0.1),
-    3: Vec2(x=0.1, y=0.9),
-    4: Vec2(x=0.9, y=0.9),
+    # 3: Vec2(x=0.9, y=0.9),
+    # 4: Vec2(x=0.1, y=0.9),
 }
 
 # class Controller:
@@ -286,7 +286,7 @@ def local_communication():
             for other_id in dotbot_neighbors[id]:
                 dotbot_controllers[id].messages[other_id] = dotbot_controllers[other_id].msg
 
-            print(f'Messages for DotBot {id}: {dotbot_controllers[id].messages[other_id].id}')
+            # print(f'Messages for DotBot {id}: {dotbot_controllers[id].messages[other_id].id}')
 
 
 async def main() -> None:
@@ -301,6 +301,8 @@ async def main() -> None:
     dotbots = await client.fetch_active_dotbots()
 
     # Initialization
+    target_counter = 0
+    worker_team_id = 1
     for i, dotbot in enumerate(dotbots):
 
         # # Init controller
@@ -310,40 +312,46 @@ async def main() -> None:
 
         # TODO:
         # - Load experiment params (xml) not needed? Add config at the top of this file?
-        # [ ] Init Leader
+        # [x] Init Leader
         #    [x] Init SCT
         #    [x] Gather messages
         #    [x] Provide messages
-        #    [ ] Motion to target
+        #    [x] Motion to target
         # [ ] Init Followers   
 
-        # Init controllers
-        dotbot_controllers[dotbot.address] = Leader(dotbot.address, team_id=i+1)
+        color = (0, 0, 0)
 
-        print(f'team_id for DotBot {dotbot.address}: {dotbot_controllers[dotbot.address].team_id}')
+        if target_counter < len(TARGETS):
 
-        target = TARGETS[dotbot_controllers[dotbot.address].team_id]
-        dotbot_controllers[dotbot.address].waypoints.put(Vector2D(target.x, target.y))
+            # Init controllers
+            dotbot_controllers[dotbot.address] = Leader(dotbot.address, team_id=i+1)
+            color = (255, 0, 0)  # Leaders are red
+
+            print(f'team_id for DotBot {dotbot.address}: {dotbot_controllers[dotbot.address].team_id}')
+
+            target = TARGETS[dotbot_controllers[dotbot.address].team_id]
+            dotbot_controllers[dotbot.address].waypoints.put(Vector2D(target.x, target.y))
+            target_counter += 1
+
+        else:
+
+            dotbot_controllers[dotbot.address] = Worker(dotbot.address, team_id=worker_team_id)
+            
+            # increment worker team id but find remainder with the number of targets
+            if dotbot.address != 'ffffffff00000000': # skip first worker as it becomes the first connector
+                worker_team_id += 1
+                if worker_team_id > len(TARGETS):
+                    worker_team_id = 1
+            
+            color = (0, 255, 0)  # Workers are green
+
+            print(f'team_id for DotBot {dotbot.address}: {dotbot_controllers[dotbot.address].team_id}')
 
         # Cosmetic: all bots are red
         await client.send_rgb_led_command(
             address=dotbot.address,
-            command=DotBotRgbLedCommandModel(red=255, green=0, blue=0),
+            command=DotBotRgbLedCommandModel(red=color[0], green=color[1], blue=color[2]),
         )
-
-    # # Set work and charge goals for each robot
-    # sorted_bots = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
-    # base_goals = assign_goals(sorted_bots, QUEUE_HEAD_X, QUEUE_HEAD_Y, QUEUE_SPACING)
-    # work_goals = assign_goals(sorted_bots, QUEUE_HEAD_X+0.8, QUEUE_HEAD_Y, QUEUE_SPACING)
-
-    # for address, controller in dotbot_controllers.items():
-    #     goal = base_goals[address]
-    #     waypoint_charge = DotBotLH2Position(x=goal['x'], y=goal['y'], z=0)
-    #     controller.set_charge_waypoint(waypoint_charge)
-
-    #     goal = work_goals[address]
-    #     waypoint_work = DotBotLH2Position(x=goal['x'], y=goal['y'], z=0)
-    #     controller.set_work_waypoint(waypoint_work)
 
     # Simulation loop
     while True:
@@ -378,9 +386,9 @@ async def main() -> None:
 
             dotbot_controllers[dotbot.address].neighbours = dotbot_neighbors.get(dotbot.address, {})
 
-            print(f'Neighbors for DotBot {dotbot.address}: {dotbot_controllers[dotbot.address].neighbours}')
+            # print(f'Neighbors for DotBot {dotbot.address}: {dotbot_controllers[dotbot.address].neighbours}')
 
-        print(f'dotbot_neighbors: {dotbot_neighbors}')
+        # print(f'dotbot_neighbors: {dotbot_neighbors}')
         
         # Exchange messages between robots within communication range
         local_communication()
@@ -397,6 +405,7 @@ async def main() -> None:
 
             # Get current goals
             if dotbot_controllers.get(bot.address).current_goal is not None:
+                print(f'goal for DotBot {bot.address}: {dotbot_controllers[bot.address].current_goal}')
                 goals[bot.address] = {
                     "x": dotbot_controllers[bot.address].current_goal.x,
                     "y": dotbot_controllers[bot.address].current_goal.y,
@@ -423,6 +432,7 @@ async def main() -> None:
             # Run controller
             controller = dotbot_controllers[dotbot.address]
             controller.position = Vector2D(pos.x, pos.y) # update position
+            print(f'Position for DotBot {dotbot.address}: {controller.position}')
             controller.control_step() # run SCT step
 
             # Get current goal

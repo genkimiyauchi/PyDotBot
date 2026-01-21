@@ -126,6 +126,8 @@ class Robot:
 
         self.led_colour = (0,0,0) # off
 
+        self.current_goal = None
+
         ### Framework related (common) ###
 
         # Core
@@ -328,10 +330,6 @@ class Leader(Robot):
         super().__init__(robot_id, config, team_id)
 
         self.id = self.id
-
-        # self.left = 0
-        # self.right = 0
-        self.current_goal = Vector2D(0,0)
 
         self.led_colour = (255,0,0) # red
 
@@ -556,7 +554,7 @@ class Leader(Robot):
     def get_messages(self):
         print(f'messages: {self.messages}')
 
-        print(f'self.neighbours: {self.neighbours}')
+        # print(f'self.neighbours: {self.neighbours}')
 
         for id, msg in self.messages.items():
 
@@ -930,18 +928,6 @@ class Leader(Robot):
 
     ### Controllable events ###
 
-    # def _callback_start(self, data):
-    #     print(Fore.LIGHTMAGENTA_EX + f"[Robot {self.id}] Start")
-    #     self.signal = True
-    #     self.input_start = False
-
-
-    # def _callback_stop(self, data):
-    #     print(Fore.LIGHTMAGENTA_EX + f"[Robot {self.id}] Stop")
-    #     self.signal = False
-    #     self.input_stop = False
-
-
     def _callback_message(self, data):
         print(Fore.LIGHTMAGENTA_EX + f"[Robot {self.id}] Message")
 
@@ -1218,9 +1204,6 @@ class Worker(Robot):
 
         self.id = self.id
 
-        self.left = 0
-        self.right = 0
-
         ### Framework related (worker) ###
 
         self.current_state = RobotState.FOLLOWER
@@ -1291,11 +1274,11 @@ class Worker(Robot):
             if is_controllable: # Add controllable event
                 func_name = '_callback_{0}'.format(stripped_name)
                 func = getattr(self, func_name)
-                self.sct.add_callback(self.sct.EV[event], func, None, None)
+                self.sct.add_callback(event, func, None, None)
             else:   # Add uncontrollable event
                 func_name = '_check_{0}'.format(stripped_name)
                 func = getattr(self, func_name)
-                self.sct.add_callback(self.sct.EV[event], None, func, None)
+                self.sct.add_callback(event, None, func, None)
 
 
     # Flocking repulsion
@@ -1382,15 +1365,15 @@ class Worker(Robot):
 
         # Set movement type
         if self.current_move_type == MoveType.FLOCK:
-            self.left, self.right = self.flock()
+            self.current_goal = self.flock()
             # TEMP
             # self.left, self.right = 0, 0
         elif self.current_move_type == MoveType.ADJUST:
-            self.left, self.right = self.adjust_position()
+            self.current_goal = self.adjust_position()
             # TEMP
             # self.left, self.right = 0, 0
         elif self.current_move_type == MoveType.TRAVEL:
-            self.left, self.right = self.travel()
+            self.current_goal = self.travel()
 
         # Other message contents
 
@@ -2537,6 +2520,7 @@ class Worker(Robot):
         repulse_msgs = []
         if not self.leader_msg.empty():
             repulse_msgs.append(self.leader_msg)
+            # print(Fore.RED + f'Leader message received: {self.leader_msg.id}' + Fore.RESET)
         repulse_msgs += self.team_msgs + self.other_leader_msgs + self.other_team_msgs + self.connector_msgs + self.traveler_msgs
         repulse_ids = {str(msg.id) for msg in repulse_msgs}
 
@@ -2547,12 +2531,12 @@ class Worker(Robot):
 
         # print("Sum vector: {}".format(sum_force))
 
-        if abs(sum_force) > 0.1:
-            return self.set_wheel_speeds(sum_force)
+        if abs(sum_force) > 0.01:
+            return sum_force
         elif abs(sum_force) == 0:
-            return self.left, self.right
+            return None
         else:
-            return 0, 0
+            return None
 
 
     def get_team_flocking_vector(self):
@@ -2632,9 +2616,9 @@ class Worker(Robot):
         # print(Fore.RED + f'sum_force: {sum_force}')
 
         if abs(sum_force) > 0.01:
-            return self.set_wheel_speeds(sum_force)
+            return sum_force
         else:
-            return 0, 0
+            return Vector2D(0,0)
 
 
     def get_chain_travel_vector(self):
@@ -2687,7 +2671,7 @@ class Worker(Robot):
     def adjust_position(self):
 
         if self.current_state == RobotState.FOLLOWER:
-            return 0, 0
+            return None
 
         # Get robot messages that this robot is directly connected with
         neighbor_msgs = self.get_neighbors()
@@ -2738,15 +2722,15 @@ class Worker(Robot):
                     break
 
         if team_lost:
-            sum_force = Vector2D(0,0)
+            sum_force = None
 
         # print(Fore.RED + f'sum_force2: {sum_force}')
 
         # Set Wheel Speed
-        if abs(sum_force) > 0.1:
-            return self.set_wheel_speeds(sum_force)
+        if sum_force is not None and abs(sum_force) > 0.01:
+            return sum_force
         else:
-            return 0, 0
+            return None
 
 
     def get_neighbors(self):
@@ -2826,8 +2810,8 @@ class Worker(Robot):
                     
                 # Add extra vector if it is too far
                 robot = self.neighbours[str(msg.id)]
-                x = math.cos(math.radians(robot['bearing'])) * robot['range']
-                y = math.sin(math.radians(robot['bearing'])) * robot['range']
+                x = math.cos(math.radians(robot.bearing)) * robot.range
+                y = math.sin(math.radians(robot.bearing)) * robot.range
                 resVec += Vector2D(x, y) * modifier
 
                 checked_neighbors.add(msg.id)
@@ -3456,4 +3440,4 @@ class Worker(Robot):
     
 
     def _check_initC(self, data):
-        return self.id == 12 and self.init_step_timer == 5
+        return self.id == 'ffffffff00000000' and self.init_step_timer == 5
