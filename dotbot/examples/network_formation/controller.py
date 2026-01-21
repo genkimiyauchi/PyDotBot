@@ -10,7 +10,6 @@ import xml.etree.ElementTree as ET
 from message import RobotState, Message, HopMsg, NetworkChangeMsg, TeamSharedMsg, ConnectionMsg, RelayMsg
 from dotbot.examples.sct import SCTPub
 
-import colorama
 from colorama import Fore
 
 # E-puck proximity sensor angles
@@ -125,7 +124,7 @@ class Robot:
 
         self.ir_threshold = 200
 
-        self.led_colour = 'off'
+        self.led_colour = (0,0,0) # off
 
         ### Framework related (common) ###
 
@@ -247,13 +246,13 @@ class Robot:
         # Loop all neighbors
         for key, value in self.neighbours.items():
             
-            distance = value["range"]
+            distance = value.range
 
             # If it is too close, add a unit vector in the opposite direction
             if distance < 0.11:
                 length = 1
-                x = math.cos(math.radians(value["bearing"])) * length
-                y = math.sin(math.radians(value["bearing"])) * length
+                x = math.cos(math.radians(value.bearing)) * length
+                y = math.sin(math.radians(value.bearing)) * length
                 rep_vec = Vector2D(x, y)
                 res_vec -= rep_vec # subtract because we want the vector to repulse from the obstacle
  
@@ -282,7 +281,7 @@ class Leader(Robot):
     WAYPOINT_TRACKING_KP = 10
     WAYPOINT_TRACKING_KI = 0
     WAYPOINT_TRACKING_KD = 0
-    THRES_RANGE = 0.07
+    THRES_RANGE = 0.001
 
     MIN_DISTANCE_FROM_ROBOT = 0.45
     SEPARATION_THRES = 0.3
@@ -330,10 +329,11 @@ class Leader(Robot):
 
         self.id = self.id
 
-        self.left = 0
-        self.right = 0
+        # self.left = 0
+        # self.right = 0
+        self.current_goal = Vector2D(0,0)
 
-        self.led_colour = 'red'
+        self.led_colour = (255,0,0) # red
 
         ### Framework related (leader) ###
 
@@ -456,7 +456,8 @@ class Leader(Robot):
 
         # FOR SIMULATED HUMAN CONTROL
         if self.init_step_timer > 10: # wait for a while before moving towards the tasks
-            self.left, self.right = self.waypoint_tracking()
+            self.current_goal = self.waypoint_tracking()
+            print(f'current_goal: {self.current_goal}, {self.init_step_timer}')
 
         # Create message
         msg = Message()
@@ -848,38 +849,40 @@ class Leader(Robot):
 
             if not self.in_task:
 
-                repulse_msgs = []
-                repulse_msgs += self.other_leader_msgs + self.other_team_msgs
-                # for msg in self.connector_msgs:
-                #     if msg.hops[self.team_id] != 1: # Do not repulse from connector that is directly connected to its team
-                #         repulse_msgs.append(msg)
-                repulse_ids = {str(msg.id) for msg in repulse_msgs}
+                # repulse_msgs = []
+                # repulse_msgs += self.other_leader_msgs + self.other_team_msgs
+                # # for msg in self.connector_msgs:
+                # #     if msg.hops[self.team_id] != 1: # Do not repulse from connector that is directly connected to its team
+                # #         repulse_msgs.append(msg)
+                # repulse_ids = {str(msg.id) for msg in repulse_msgs}
 
                 waypoint_force = self.vector_to_waypoint()
-                robot_force = self.get_robot_repulsion_vector(repulse_ids)
-                obstacle_force = self.get_obstacle_repulsion_vector()
+                # robot_force = self.get_robot_repulsion_vector(repulse_ids)
+                # obstacle_force = self.get_obstacle_repulsion_vector()
 
-                waypoint_weight = 1
-                robot_weight = 0.03
-                obstacle_weight = 1
+                # waypoint_weight = 1
+                # robot_weight = 0.03
+                # obstacle_weight = 1
 
-                sum_force = waypoint_weight * waypoint_force + robot_weight * robot_force + obstacle_weight * obstacle_force
-                print("obstacle vector: {}".format(obstacle_force))
+                # sum_force = waypoint_weight * waypoint_force + robot_weight * robot_force + obstacle_weight * obstacle_force
+                # print("obstacle vector: {}".format(obstacle_force))
 
-                print("Sum vector: {}".format(sum_force))
+                waypoint_force = list(self.waypoints.queue)[0]
 
-                if abs(sum_force) > 0.01:
-                    return self.set_wheel_speeds(sum_force)
-                else:
-                    return 0, 0
+                print("Sum vector: {}".format(waypoint_force))
+
+                # if abs(waypoint_force) > 0.01:
+                return waypoint_force
+                # else:
+                #     return None
 
             else:
                 if self.current_task_demand == 0:
                     self.waypoints.get() # pop first waypoint
-                return 0, 0
+                return None
         else:
             self.in_task = True
-            return 0, 0
+            return None
 
 
     def vector_to_waypoint(self):
@@ -908,11 +911,11 @@ class Leader(Robot):
 
         for key, value in self.neighbours.items():
             if key in ids:
-                distance = value["range"]
+                distance = value.range
                 lj_force = self.generalized_lennard_jones_repulsion(distance)
                 print("LJ force: {}".format(lj_force))
-                x = math.cos(math.radians(value["bearing"])) * lj_force
-                y = math.sin(math.radians(value["bearing"])) * lj_force
+                x = math.cos(math.radians(value.bearing)) * lj_force
+                y = math.sin(math.radians(value.bearing)) * lj_force
                 rep_vec = Vector2D(x, y)
                 print("Vector to repel: {}".format(rep_vec))
                 res_vec += rep_vec
@@ -1340,7 +1343,7 @@ class Worker(Robot):
         # Update sensor readings and process messages received
         if self.current_state == RobotState.FOLLOWER:
             # Set LED colors
-            self.led_colour = 'green'
+            self.led_colour = (0,255,0) # green
 
             # Set leader signal
             # msg.leader_signal = self.leader_signal
@@ -1358,7 +1361,7 @@ class Worker(Robot):
 
         elif self.current_state == RobotState.CONNECTOR:
             # Set LED colors
-            self.led_colour = 'blue'
+            self.led_colour = (0,0,255) # blue
             
             # Set network hop counts
             msg.hops = deepcopy(self.hops_dict)
@@ -1373,9 +1376,9 @@ class Worker(Robot):
         elif self.current_state == RobotState.TRAVELER:
             # Set LED colors
             if self.init_step_timer % 2 == 1:
-                self.led_colour = 'yellow'
+                self.led_colour = (255,255,0) # yellow
             else:
-                self.led_colour = 'off'
+                self.led_colour = (0,0,0) # off
 
         # Set movement type
         if self.current_move_type == MoveType.FLOCK:
@@ -2596,11 +2599,11 @@ class Worker(Robot):
 
         for key, value in self.neighbours.items():
             if key in ids:
-                distance = value["range"]
+                distance = value.range
                 lj_force = self.generalized_lennard_jones_repulsion(distance)
                 # print("LJ force: {}".format(lj_force))
-                x = math.cos(math.radians(value["bearing"])) * lj_force
-                y = math.sin(math.radians(value["bearing"])) * lj_force
+                x = math.cos(math.radians(value.bearing)) * lj_force
+                y = math.sin(math.radians(value.bearing)) * lj_force
                 rep_vec = Vector2D(x, y)
                 # print("Vector to repel: {}".format(rep_vec))
                 res_vec += rep_vec

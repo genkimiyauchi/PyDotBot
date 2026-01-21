@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import math
 import os
 from typing import Dict, List
+import angles
 
 from dotbot.examples.orca import (
     Agent,
@@ -26,6 +27,8 @@ from dotbot.examples.network_formation.controller import (
     Worker,
 )
 
+from vector2d import Vector2D
+
 THRESHOLD = 30  # Acceptable distance error to consider a waypoint reached
 DT = 0.05  # Control loop period (seconds)
 
@@ -46,12 +49,20 @@ SENSING_RANGE = 0.3  # Range within which neighbors can be sensed
 @dataclass
 class NeighborSensing:
     name: str
+    range: float
+    bearing: float
     position: Vec2
 
 
 dotbot_controllers: Dict[str, Robot] = {}
 dotbot_neighbors: Dict[str, Dict[str, NeighborSensing]] = {}
 
+TARGETS = {
+    1: Vec2(x=0.1, y=0.1),
+    2: Vec2(x=0.9, y=0.1),
+    3: Vec2(x=0.1, y=0.9),
+    4: Vec2(x=0.9, y=0.9),
+}
 
 # class Controller:
 #     def __init__(self, address: str, path: str):
@@ -311,6 +322,9 @@ async def main() -> None:
 
         print(f'team_id for DotBot {dotbot.address}: {dotbot_controllers[dotbot.address].team_id}')
 
+        target = TARGETS[dotbot_controllers[dotbot.address].team_id]
+        dotbot_controllers[dotbot.address].waypoints.put(Vector2D(target.x, target.y))
+
         # Cosmetic: all bots are red
         await client.send_rgb_led_command(
             address=dotbot.address,
@@ -339,6 +353,8 @@ async def main() -> None:
         # Get position of all robots
         dotbots = await client.fetch_active_dotbots()
 
+        dotbot_neighbors.clear()
+
         # Process neighbor messages
         for dotbot in dotbots:
 
@@ -352,7 +368,12 @@ async def main() -> None:
 
                         dotbot_neighbors.setdefault(dotbot.address, {})[other_dotbot.address] = NeighborSensing(
                             name=other_dotbot.address,
-                            position=Vec2(x=other_dotbot.lh2_position.x, y=other_dotbot.lh2_position.y)
+                            range=range,
+                            bearing=angles.normalize(math.degrees(math.atan2(
+                                other_dotbot.lh2_position.y - dotbot.lh2_position.y,
+                                other_dotbot.lh2_position.x - dotbot.lh2_position.x,
+                            ))),
+                            position=Vector2D(x=other_dotbot.lh2_position.x, y=other_dotbot.lh2_position.y)
                         )
 
             dotbot_controllers[dotbot.address].neighbours = dotbot_neighbors.get(dotbot.address, {})
@@ -367,90 +388,91 @@ async def main() -> None:
         for id, controller in dotbot_controllers.items():
             controller.control_step()
 
-        # goals = dict()
-        # agents: Dict[str, Agent] = {}
+        goals: Dict[str, Dict[str, float]] = dict()
+        agents: Dict[str, Agent] = {}
 
-        # for bot in dotbots:
+        for bot in dotbots:
 
-            # print(f'waypoint_current for DotBot {bot.address}: {dotbot_controllers.get(bot.address).waypoint_current}')
+            print(f'current_goal for DotBot {bot.address}: {dotbot_controllers.get(bot.address).current_goal}')
 
-            # # Get current goals
-            # if dotbot_controllers.get(bot.address).waypoint_current is not None:
-            #     goals[bot.address] = {
-            #         "x": dotbot_controllers[bot.address].waypoint_current.x,
-            #         "y": dotbot_controllers[bot.address].waypoint_current.y,
-            #     }
+            # Get current goals
+            if dotbot_controllers.get(bot.address).current_goal is not None:
+                goals[bot.address] = {
+                    "x": dotbot_controllers[bot.address].current_goal.x,
+                    "y": dotbot_controllers[bot.address].current_goal.y,
+                }
                 
-            # agents[bot.address] = Agent(
-            #     id=bot.address,
-            #         position=Vec2(x=bot.lh2_position.x, y=bot.lh2_position.y),
-            #         velocity=Vec2(x=0, y=0),
-            #         radius=BOT_RADIUS,
-            #         direction=bot.direction,
-            #         max_speed=MAX_SPEED,
-            #         preferred_velocity=preferred_vel(
-            #             dotbot=bot, goal=goals.get(bot.address)
-            #         ),
-            #     )
+            agents[bot.address] = Agent(
+                id=bot.address,
+                    position=Vec2(x=bot.lh2_position.x, y=bot.lh2_position.y),
+                    velocity=Vec2(x=0, y=0),
+                    radius=BOT_RADIUS,
+                    direction=bot.direction,
+                    max_speed=MAX_SPEED,
+                    preferred_velocity=preferred_vel(
+                        dotbot=bot, goal=goals.get(bot.address)
+                    ),
+                )
 
-        # # Run controller for each robot
-        # for dotbot in dotbots:
-        #     agent = agents[dotbot.address]
-        #     pos = dotbot.lh2_position
-        #     print(f"DotBot {dotbot.address}: Position ({pos.x:.2f}, {pos.y:.2f}), Direction {dotbot.direction:.2f}°")
+        # Run controller for each robot
+        for dotbot in dotbots:
+            agent = agents[dotbot.address]
+            pos = dotbot.lh2_position
+            print(f"DotBot {dotbot.address}: Position ({pos.x:.2f}, {pos.y:.2f}), Direction {dotbot.direction:.2f}°")
 
-        #     # Run controller
-        #     controller = dotbot_controllers[dotbot.address]
-        #     controller.set_current_position(pos) # update position
-        #     controller.control_step() # run SCT step
+            # Run controller
+            controller = dotbot_controllers[dotbot.address]
+            controller.position = Vector2D(pos.x, pos.y) # update position
+            controller.control_step() # run SCT step
 
-        #     # Get current goal
-        #     goal = controller.waypoint_current
-        #     goals[dotbot.address] = {
-        #         "x": goal.x,
-        #         "y": goal.y,
-        #     }
+            # Get current goal
+            goal = controller.current_goal
+            if goal is not None:
+                goals[dotbot.address] = {
+                    "x": goal.x,
+                    "y": goal.y,
+                }
 
-        #     # Send goal
-        #     neighbors = [neighbor for neighbor in agents.values() if neighbor.id != agent.id]
+            # Send goal
+            neighbors = [neighbor for neighbor in agents.values() if neighbor.id != agent.id]
 
-        #     orca_vel = await compute_orca_velocity(
-        #         agent, neighbors=neighbors, params=params
-        #     )
-        #     STEP_SCALE = 0.1
-        #     step = Vec2(x=orca_vel.x * STEP_SCALE, y=orca_vel.y * STEP_SCALE)
+            orca_vel = await compute_orca_velocity(
+                agent, neighbors=neighbors, params=params
+            )
+            STEP_SCALE = 0.1
+            step = Vec2(x=orca_vel.x * STEP_SCALE, y=orca_vel.y * STEP_SCALE)
 
-        #     # ---- CLAMP STEP TO GOAL DISTANCE ----
-        #     goal = goals.get(agent.id)
-        #     if goal is not None:
-        #         dx = goal["x"] - agent.position.x
-        #         dy = goal["y"] - agent.position.y
-        #         dist_to_goal = math.hypot(dx, dy)
+            # ---- CLAMP STEP TO GOAL DISTANCE ----
+            goal = goals.get(agent.id)
+            if goal is not None:
+                dx = goal["x"] - agent.position.x
+                dy = goal["y"] - agent.position.y
+                dist_to_goal = math.hypot(dx, dy)
 
-        #         step_len = math.hypot(step.x, step.y)
-        #         if step_len > dist_to_goal and step_len > 0:
-        #             scale = dist_to_goal / step_len
-        #             step = Vec2(x=step.x * scale, y=step.y * scale)
-        #     # ------------------------------------
+                step_len = math.hypot(step.x, step.y)
+                if step_len > dist_to_goal and step_len > 0:
+                    scale = dist_to_goal / step_len
+                    step = Vec2(x=step.x * scale, y=step.y * scale)
+            # ------------------------------------
 
-        #     waypoints = DotBotWaypoints(
-        #         threshold=THRESHOLD,
-        #         waypoints=[
-        #             DotBotLH2Position(
-        #                 x=agent.position.x + step.x, y=agent.position.y + step.y, z=0
-        #             )
-        #         ],
-        #     )
-        #     await client.send_waypoint_command(
-        #         address=agent.id,
-        #         application=ApplicationType.DotBot,
-        #         command=waypoints,
-        #     )
-        #     led = controller.led
-        #     await client.send_rgb_led_command(
-        #         address=dotbot.address,
-        #         command=DotBotRgbLedCommandModel(red=led[0], green=led[1], blue=led[2]),
-        #     )
+            waypoints = DotBotWaypoints(
+                threshold=THRESHOLD,
+                waypoints=[
+                    DotBotLH2Position(
+                        x=agent.position.x + step.x, y=agent.position.y + step.y, z=0
+                    )
+                ],
+            )
+            await client.send_waypoint_command(
+                address=agent.id,
+                application=ApplicationType.DotBot,
+                command=waypoints,
+            )
+            led = controller.led_colour
+            await client.send_rgb_led_command(
+                address=dotbot.address,
+                command=DotBotRgbLedCommandModel(red=led[0], green=led[1], blue=led[2]),
+            )
 
     return None
 
