@@ -56,3 +56,7 @@ def normalize(a: Vec2) -> Vec2:
 def perp(a: Vec2) -> Vec2:
     # Left-hand perpendicular
     return Vec2(-a.y, a.x)
+
+
+def distance(a: Vec2, b: Vec2) -> float:
+    return vec2_length(sub(a, b))
