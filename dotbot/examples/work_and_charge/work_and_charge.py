@@ -1,6 +1,7 @@
 import asyncio
 import math
 import os
+import time
 from typing import Dict, List
 
 from dotbot.examples.orca import (
@@ -20,6 +21,11 @@ from dotbot.protocol import ApplicationType
 from dotbot.rest import RestClient
 from dotbot.examples.sct import SCT
 
+import numpy as np
+from scipy.spatial import cKDTree
+
+ORCA_RANGE = 30
+
 THRESHOLD = 30  # Acceptable distance error to consider a waypoint reached
 DT = 0.05  # Control loop period (seconds)
 
@@ -32,7 +38,7 @@ MAX_SPEED = 0.75  # Maximum allowed linear speed of a bot
     0.1,
 )  # World-frame (X, Y) position of the charging queue head
 QUEUE_SPACING = (
-    0.1  # Spacing between consecutive bots in the charging queue (along X axis)
+    0.06  # Spacing between consecutive bots in the charging queue (along X axis)
 )
 
 
@@ -105,31 +111,31 @@ class Controller:
 
     # Callback functions (controllable events)
     def _callback_moveToWork(self, data: any):
-        print(f'DotBot {self.address}. ACTION: moveToWork')
+        # print(f'DotBot {self.address}. ACTION: moveToWork')
         self.waypoint_current = self.waypoint_work
         self.led = (0, 255, 0)  # Green LED when moving to work
 
 
     def _callback_moveToCharge(self, data: any):
-        print(f'DotBot {self.address}. ACTION: moveToCharge')
+        # print(f'DotBot {self.address}. ACTION: moveToCharge')
         self.waypoint_current = self.waypoint_charge
         self.led = (255, 0, 0)  # Red LED when moving to charge
 
 
     def _callback_work(self, data: any):
-        print(f'DotBot {self.address}. ACTION: work')
+        # print(f'DotBot {self.address}. ACTION: work')
         self.energy = 'low'  # After working, energy level goes low
 
 
     def _callback_charge(self, data: any):
-        print(f'DotBot {self.address}. ACTION: charge')
+        # print(f'DotBot {self.address}. ACTION: charge')
         self.energy = 'high'  # After charging, energy level goes high
 
 
     # Callback functions (uncontrollable events)
     def _check_atWork(self, data: any):
         if self.dist_work * 1000 < THRESHOLD:
-            print(f'DotBot {self.address}. EVENT: atWork')
+            # print(f'DotBot {self.address}. EVENT: atWork')
             return True
         return False
 
@@ -143,7 +149,7 @@ class Controller:
 
     def _check_atCharger(self, data: any):
         if self.dist_charge * 1000 < THRESHOLD:
-            print(f'DotBot {self.address}. EVENT: atCharger')
+            # print(f'DotBot {self.address}. EVENT: atCharger')
             return True
         return False
 
@@ -278,9 +284,14 @@ async def main() -> None:
         )
 
     # Set work and charge goals for each robot
-    sorted_bots = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
+    # sorted_bots = order_bots(dotbots, QUEUE_HEAD_X, QUEUE_HEAD_Y)
+    sorted_bots = sorted(dotbots, key=lambda bot: bot.address)
+    # print(f'sorted_bots: {[bot.address for bot in sorted_bots]}')
     base_goals = assign_goals(sorted_bots, QUEUE_HEAD_X, QUEUE_HEAD_Y, QUEUE_SPACING)
     work_goals = assign_goals(sorted_bots, QUEUE_HEAD_X+0.8, QUEUE_HEAD_Y, QUEUE_SPACING)
+
+    # print(f'work_goals: {work_goals}')
+    # print(f'base_goals: {base_goals}')
 
     for address, controller in dotbot_controllers.items():
         goal = base_goals[address]
@@ -291,10 +302,17 @@ async def main() -> None:
         waypoint_work = DotBotLH2Position(x=goal['x'], y=goal['y'], z=0)
         controller.set_work_waypoint(waypoint_work)
 
+    avg_loop_time = 0.0
+    iteration_count = 0
+    alpha = 0.1  # Smoothing factor (0.1 means 10% new data, 90% history)
+
     # Simulation loop
     while True:
 
-        print('\n', end='')
+        iteration_start = time.perf_counter()
+        iteration_count += 1
+
+        # print('\n', end='')
 
         # Get position of all robots
         dotbots = await client.fetch_active_dotbots()
@@ -325,11 +343,19 @@ async def main() -> None:
                     ),
                 )
 
+        # Prepare coordinates for all agents
+        # Extract [x, y] for every agent in the same order
+        agent_list = list(agents.values())
+        positions = np.array([[a.position.x, a.position.y] for a in agent_list])
+
+        # Build the KD-Tree
+        tree = cKDTree(positions)
+
         # Run controller for each robot
         for dotbot in dotbots:
             agent = agents[dotbot.address]
             pos = dotbot.lh2_position
-            print(f"DotBot {dotbot.address}: Position ({pos.x:.2f}, {pos.y:.2f}), Direction {dotbot.direction:.2f}°")
+            # print(f"DotBot {dotbot.address}: Position ({pos.x:.2f}, {pos.y:.2f}), Direction {dotbot.direction:.2f}°")
 
             # Run controller
             controller = dotbot_controllers[dotbot.address]
@@ -344,11 +370,18 @@ async def main() -> None:
             }
 
             # Send goal
-            neighbors = [neighbor for neighbor in agents.values() if neighbor.id != agent.id]
 
-            orca_vel = await compute_orca_velocity(
-                agent, neighbors=neighbors, params=params
-            )
+            # Prepare neighbor list using KD-Tree
+
+            neighbor_indices = tree.query_ball_point([agent.position.x, agent.position.y], r=ORCA_RANGE)
+            local_neighbors = [agent_list[idx] for idx in neighbor_indices if agent_list[idx].id != agent.id]
+
+            if not local_neighbors:
+                orca_vel = agent.preferred_velocity
+            else:
+                orca_vel = await compute_orca_velocity(
+                    agent, neighbors=local_neighbors, params=params
+                )
             STEP_SCALE = 0.1
             step = Vec2(x=orca_vel.x * STEP_SCALE, y=orca_vel.y * STEP_SCALE)
 
@@ -383,6 +416,17 @@ async def main() -> None:
                 address=dotbot.address,
                 command=DotBotRgbLedCommandModel(red=led[0], green=led[1], blue=led[2]),
             )
+
+        iteration_end = time.perf_counter()
+        total_duration_ms = (iteration_end - iteration_start) * 1000
+        
+        # 3. Update the Exponential Moving Average (EMA)
+        if iteration_count == 1:
+            avg_loop_time = total_duration_ms
+        else:
+            avg_loop_time = (alpha * total_duration_ms) + (1 - alpha) * avg_loop_time
+
+        print(f"Iter: {iteration_count:05} | Instant: {total_duration_ms:6.2f}ms | Avg: {avg_loop_time:6.2f}ms")
 
     return None
 
