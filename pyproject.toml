@@ -48,8 +48,7 @@ dependencies = [
     "pydotbot-utils >= 0.3.0",
     "toml           >= 0.10.2",
     "PyYAML         >= 6.0.3",
-    "angles         >= 2.0",
-    "colorama       >= 0.4.6",
+    "scipy          >= 1.17.0",
 ]
 description = "Package to easily control your DotBots and SailBots."
 readme = "README.md"
