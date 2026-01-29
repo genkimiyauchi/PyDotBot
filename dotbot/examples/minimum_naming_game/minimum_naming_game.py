@@ -5,7 +5,6 @@ from time import time
 from typing import Dict, List
 
 from dotbot.examples.vec2 import Vec2
-from dotbot.examples.work_and_charge.work_and_charge import THRESHOLD
 from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
@@ -27,6 +26,7 @@ import random
 from scipy.spatial import cKDTree
 
 COMM_RANGE=0.11
+THRESHOLD=1
 
 dotbot_controllers = dict()
 
@@ -40,7 +40,7 @@ async def main() -> None:
     async with rest_client(url, port, use_https) as client:
         dotbots = await client.fetch_active_dotbots()
 
-        print(len(dotbots), "dotbots connected.")
+        # print(len(dotbots), "dotbots connected.")
 
         # Initialization
         for dotbot in dotbots:
@@ -48,7 +48,7 @@ async def main() -> None:
             # Init controller
             controller = Controller(dotbot.address, sct_path)
             dotbot_controllers[dotbot.address] = controller    
-            print(f'type of controller: {type(controller)} for DotBot {dotbot.address}')   
+            # print(f'type of controller: {type(controller)} for DotBot {dotbot.address}')   
 
         # 1. Extract positions into a list of [x, y] coordinates
         # This loop iterates through your dotbot list and grabs the lh2_position attributes
@@ -71,10 +71,29 @@ async def main() -> None:
             while True:
                 print("Step", counter)
 
-                # Cosmetic: all bots are black
+                # ------ ONLY FOR MOVEMENT ------
+                dotbots = await client.fetch_active_dotbots()
+
+                # 1. Extract positions into a list of [x, y] coordinates
+                # This loop iterates through your dotbot list and grabs the lh2_position attributes
+                coords = [[dotbot.lh2_position.x, dotbot.lh2_position.y] for dotbot in dotbots]
+
+                # 2. Convert the list to a NumPy array
+                # The structure will be (N, 2), where N is the number of dotbots
+                positions = np.array(coords)
+
+                # 3. Build the KD-Tree
+                # This tree can now be used for fast spatial queries (like finding neighbors)
+                tree = cKDTree(positions)
+                # -----------------------------
+
                 for dotbot in dotbots:
 
                     controller = dotbot_controllers[dotbot.address]
+                    controller.position = dotbot.lh2_position
+                    controller.direction = dotbot.direction
+
+                    # print(f'Controller position: {controller.position}, direction: {controller.direction}')
 
                     # 1. Query the tree for indices of neighbors
                     # This returns a list of integers representing the index in your 'dotbots' list
@@ -102,20 +121,22 @@ async def main() -> None:
                             controller.new_word_received = True
                             controller.received_word_checked = False
                         
+                    # Update controller's neighbor list
+                    controller.neighbors = neighbors
+                        
                     # Run controller
-                    
                     controller.control_step() # run SCT step
 
                     waypoints = DotBotWaypoints(
                         threshold=THRESHOLD,
                         waypoints=[
                             DotBotLH2Position(
-                                x=dotbots[0].lh2_position.x, y=dotbots[0].lh2_position.y, z=0
+                                x=dotbot.lh2_position.x + round(controller.vector[0], 2), y=dotbot.lh2_position.y + round(controller.vector[1], 2), z=0
                             )
                         ],
                     )
                     await client.send_waypoint_command(
-                        address=dotbots[0].address,
+                        address=dotbot.address,
                         application=ApplicationType.DotBot,
                         command=waypoints,
                     )
@@ -134,7 +155,7 @@ async def main() -> None:
                     )
 
 
-                await asyncio.sleep(0.1)
+                # await asyncio.sleep(0.1)
                 counter += 1
         finally:
             await ws.close()

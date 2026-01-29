@@ -1,5 +1,16 @@
 import random
+from dotbot.models import (
+    DotBotLH2Position,
+    DotBotModel,
+    DotBotMoveRawCommandModel,
+    DotBotRgbLedCommandModel,
+    DotBotWaypoints,
+    WSRgbLed,
+    WSMoveRaw,
+    WSWaypoints,
+)
 from dotbot.examples.sct import SCT
+from dotbot.examples.minimum_naming_game.random_walk import random_walk
 
 DISTINCT_COLORS = [
     (255, 0, 0),    # Red
@@ -16,6 +27,12 @@ DISTINCT_COLORS = [
 class Controller:
     def __init__(self, address: str, path: str):
         self.address = address
+
+        self.position = DotBotLH2Position(x=0.0, y=0.0, z=0.0)  # initial position
+        self.direction = 0.0  # initial orientation
+
+        self.neighbors: list[DotBotModel] = []  # initial empty neighbor list
+        self.vector = [0.0, 0.0]  # initial movement vector
 
         # SCT initialization
         self.sct = SCT(path)
@@ -55,6 +72,8 @@ class Controller:
         self.color_code()  # Update LED color based on inventory state
         # print(f'DotBot {self.address} LED color: {self.led}')
 
+        self.vector = random_walk(self.position.x, self.position.y, self.direction, self.neighbors)  # Placeholder for neighbors
+        # print(f'DotBot {self.address} Random Walk Vector: {self.vector}')
 
     # Register callback functions to the generator player
     def add_callbacks(self):
@@ -85,7 +104,7 @@ class Controller:
             Equivalent to callback_startTimer.
             Saves the current tick count to mark the start of the broadcast interval.
             """
-            print(f'DotBot {self.address}. ACTION: startTimer')
+            # print(f'DotBot {self.address}. ACTION: startTimer')
             self.last_broadcast_ticks = self.counter
 
 
@@ -94,7 +113,7 @@ class Controller:
             Selects a random word from the inventory, or invents a new one
             if the inventory is empty. Sets the flag for transmission.
             """
-            print(f'DotBot {self.address}. ACTION: selectAndBroadcast', end=". ")
+            # print(f'DotBot {self.address}. ACTION: selectAndBroadcast', end=". ")
             
             # Select or Invent a word
             if not self.inventory:
@@ -110,7 +129,7 @@ class Controller:
             # Set broadcast flag for transmission
             self.broadcast_word = True
 
-            print(f'\tinventory: {self.inventory},\tselected word: {self.w_index}')
+            # print(f'\tinventory: {self.inventory},\tselected word: {self.w_index}')
             
 
     def _callback_updateInventory(self, data: any):
@@ -119,7 +138,7 @@ class Controller:
             If the word is known, the agent reaches a local consensus (inventory collapses).
             If unknown, the word is added to the agent's vocabulary.
             """
-            print(f'DotBot {self.address}. ACTION: updateInventory', end=". ")
+            # print(f'DotBot {self.address}. ACTION: updateInventory', end=". ")
 
             # Ensure we have a word to process
             if self.received_word is None:
@@ -131,12 +150,12 @@ class Controller:
                 # SUCCESS: word is known. 
                 # Remove all other words (collapse inventory to just this one)
                 self.inventory = {self.received_word}
-                print(f' removed all other words, inventory now: {self.inventory}')
+                # print(f' removed all other words, inventory now: {self.inventory}')
             else:
                 # FAILURE: word is unknown.
                 # Insert it into the inventory
                 self.inventory.add(self.received_word)
-                print(f' added word {self.received_word}, inventory now: {self.inventory}')
+                # print(f' added word {self.received_word}, inventory now: {self.inventory}')
             
             # Mark as checked (if you're using this flag to prevent double-processing)
             self.received_word_checked = True
