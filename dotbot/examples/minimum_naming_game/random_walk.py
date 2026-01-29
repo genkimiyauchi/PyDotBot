@@ -102,11 +102,11 @@ def random_walk(position_x: float, position_y: float, direction: float, neighbor
             # For simplicity, we can use the specific wall/neighbor location
             if (curr_x < MARGIN):
                 local_v[0] += UNIT_SPEED
-            elif (curr_x > (1.0 - MARGIN)):
+            if (curr_x > (1.0 - MARGIN)):
                 local_v[0] += -UNIT_SPEED
-            elif (curr_y < MARGIN):
+            if (curr_y < MARGIN):
                 local_v[1] += UNIT_SPEED
-            elif (curr_y > (1.0 - MARGIN)):
+            if (curr_y > (1.0 - MARGIN)):
                 local_v[1] += -UNIT_SPEED
             
         if neighbor_collision:
