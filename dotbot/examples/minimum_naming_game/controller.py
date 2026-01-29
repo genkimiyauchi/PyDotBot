@@ -1,6 +1,17 @@
 import random
 from dotbot.examples.sct import SCT
 
+DISTINCT_COLORS = [
+    (255, 0, 0),    # Red
+    (0, 255, 0),    # Lime
+    (0, 0, 255),    # Blue
+    (255, 255, 0),  # Yellow
+    (255, 0, 255),  # Magenta
+    (0, 255, 255),  # Cyan
+    (255, 165, 0),  # Orange
+    (255, 255, 255) # White
+]
+
 
 class Controller:
     def __init__(self, address: str, path: str):
@@ -17,8 +28,8 @@ class Controller:
         self.last_broadcast_ticks = 0          # Tracks timing
         self.max_broadcast_ticks = 5 
         
-        # Pre-defined words (num_words = 128)
-        self.num_words = 128
+        # Pre-defined words (e.g., num_words = 128)
+        self.num_words = 8
         self.words = list(range(self.num_words)) 
         
         # Word reception state
@@ -173,16 +184,27 @@ class Controller:
         # (Since inventory is a set, we convert to list to grab the first element)
         word = list(self.inventory)[0]
 
-        # 3. Calculate RGB components using the original base-4 logic
-        # Mapping word index (0-127) to a color space (1-64)
-        color = (word % 63) + 1
+        # ------ ORIGINAL ------
+        # # 3. Calculate RGB components using the original base-4 logic
+        # # Mapping word index (0-127) to a color space (1-64)
+        # color = (word % 63) + 1
         
-        r = color // 16       # Integer division
-        rem1 = color % 16
-        g = rem1 // 4         # Integer division
-        b = rem1 % 4
+        # r = color // 16       # Integer division
+        # rem1 = color % 16
+        # g = rem1 // 4         # Integer division
+        # b = rem1 % 4
 
-        # 4. Update the LED state
-        # Note: Original Kilobot RGB values are 0-3. 
-        # convert to range 0-255.
-        self.led = (r * 85, g * 85, b * 85)
+        # # 4. Update the LED state
+        # # Note: Original Kilobot RGB values are 0-3. 
+        # # convert to range 0-255.
+        # self.led = (r * 85, g * 85, b * 85)
+        # ------------------------
+
+        # ------ NEW SIMPLIFIED COLOR CODING ------
+        # Map the word to an index (0-7)
+        # Using modulo (%) ensures that if word is 8, it wraps to index 0 (Red)
+        color_idx = word % len(DISTINCT_COLORS)
+
+        # Assign the high-contrast color
+        self.led = DISTINCT_COLORS[color_idx]
+        # -----------------------------------------
