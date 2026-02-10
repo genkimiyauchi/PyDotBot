@@ -30,7 +30,6 @@ def set_wheel_speeds_from_vector(vx, vy, current_direction_deg, wheel_turning_pa
     # This result is between -PI and +PI
     angle_diff = (target_rad - current_rad + math.pi) % (2 * math.pi) - math.pi
     
-    # --- The rest of your C++ logic follows ---
     abs_angle = abs(angle_diff)
     heading_length = math.sqrt(vx**2 + vy**2)
     base_speed = min(heading_length, wheel_turning_params.MaxSpeed)
@@ -92,14 +91,12 @@ def random_walk(position_x: float, position_y: float, direction: float, neighbor
                       curr_y < MARGIN or curr_y > (1.0 - MARGIN))
 
     # 3. Determine "Local" movement
-    # local_v[0] is longitudinal (forward), local_v[1] is lateral (sideways)
     local_v = [0.0, 0.0]
 
     if neighbor_collision or wall_collision:
 
         if wall_collision:
             # Decide direction of repulsion (Left or Right)
-            # For simplicity, we can use the specific wall/neighbor location
             if (curr_x < MARGIN):
                 local_v[0] += UNIT_SPEED
             if (curr_x > (1.0 - MARGIN)):
@@ -115,12 +112,12 @@ def random_walk(position_x: float, position_y: float, direction: float, neighbor
 
             mag = math.sqrt(avg_dx**2 + avg_dy**2)
             if mag > 0:
-                # Add "Away" vector to our existing global movement
+                # Add "Away" vector to the existing global movement
                 local_v[0] -= (avg_dx / mag) * UNIT_SPEED
                 local_v[1] -= (avg_dy / mag) * UNIT_SPEED
                 # print(f"Neighbor avoidance vector: {local_v} from neighbors {[n.address for n in neighbors]}")
 
-        # Final Step: Normalize so we don't go double speed in corners
+        # Normalize so we don't go double speed in corners
         total_mag = math.sqrt(local_v[0]**2 + local_v[1]**2)
         if total_mag > 0:
             return (
@@ -134,12 +131,6 @@ def random_walk(position_x: float, position_y: float, direction: float, neighbor
 
         # 4. Rotate Local Vector to Global Vector
         theta_rad = math.radians(direction)
-        
-        # Using the axis mapping: 0 deg -> (-1, 0), 90 deg -> (0, 1)
-        # Standard 2D Rotation Matrix:
-        # x' = x*cos(theta) - y*sin(theta)
-        # y' = x*sin(theta) + y*cos(theta)
-        # But adjusted for your starting offset (0 deg = -x):
         
         global_vx = (local_v[0] * -math.cos(theta_rad)) - (local_v[1] * math.sin(theta_rad))
         global_vy = (local_v[0] * math.sin(theta_rad)) + (local_v[1] * -math.cos(theta_rad))

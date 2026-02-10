@@ -131,7 +131,9 @@ async def main() -> None:
                         threshold=THRESHOLD,
                         waypoints=[
                             DotBotLH2Position(
-                                x=dotbot.lh2_position.x + round(controller.vector[0], 2), y=dotbot.lh2_position.y + round(controller.vector[1], 2), z=0
+                                x=dotbot.lh2_position.x + round(controller.vector[0], 2), 
+                                y=dotbot.lh2_position.y + round(controller.vector[1], 2), 
+                                z=0
                             )
                         ],
                     )

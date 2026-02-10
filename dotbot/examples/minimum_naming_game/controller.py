@@ -75,6 +75,7 @@ class Controller:
         self.vector = random_walk(self.position.x, self.position.y, self.direction, self.neighbors)  # Placeholder for neighbors
         # print(f'DotBot {self.address} Random Walk Vector: {self.vector}')
 
+
     # Register callback functions to the generator player
     def add_callbacks(self):
 
